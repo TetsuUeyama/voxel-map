@@ -143,9 +143,185 @@ const PROCEDURAL_GENERATORS = new Map<string, (seed: number) => VoxelEntry[]>([
 // Default object registrations (procedural fallbacks)
 // ═══════════════════════════════════════════════════════════════════
 
+/** IDs of tree .vox files converted from Low-Poly Tree Collection (001–200) */
+const VOX_TREE_IDS = Array.from({ length: 200 }, (_, i) =>
+  String(i + 1).padStart(3, '0'),
+);
+
+/** Broadleaf tree .vox file names (maple, poplar, whitePoplar) */
+const VOX_BROADLEAF_IDS = [
+  'maple1', 'maple2', 'maple3',
+  'poplar1', 'poplar2', 'poplar3', 'poplar4',
+  'whitePoplar1', 'whitePoplar2', 'whitePoplar3', 'whitePoplar4',
+];
+
+/** Tree3 .vox file names (maple + generic trees) */
+const VOX_TREE3_IDS = [
+  'mapleTree_small_1', 'mapleTree_small_2', 'mapleTree_small_3',
+  'treeBase_simple',
+  'generic_tree1', 'generic_tree2', 'generic_tree3',
+];
+
+/** Farm/Building .vox file names from Low-Poly Farm Mega Pack */
+const VOX_BUILDING_IDS = [
+  'farm_001','farm_002','farm_003','farm_004','farm_005','farm_006','farm_007','farm_008',
+  'farm_009','farm_010','farm_011','farm_012','farm_013',
+  'sheep_014','donkey_015','goat_016','cow_017','rooster_018','horse_019','hen_020',
+  'harvest_021','plants_022','grass_023','rock_024','Stoneroad_025',
+  'field_b_ready_026','field_027','farm_028','farm_029','farm_030',
+  'field_031','field_b_ready_032','field_a_ready_033',
+  'mailbox_034','fence_035','fence_036','fence_037','fence_038','fence_039',
+  'brick_040','logs_041','fence_042','timber_043','shovel_044','farmsign_045',
+  'fence_046','gate_047','fence_048','laddertriangle_049',
+  'farm_050','farm_051','logs_052','ladder_along_053',
+  'farm_054','farm_055','farm_056','farm_057','farm_058','farm_059','farm_060',
+  'farm_061','farm_062','farm_063','farm_064','farm_065','farm_066','farm_067',
+  'farm_068','farm_069','farm_070','farm_071',
+  'structures_a_072','structures_073','structures_074',
+  'toilet_a_075','bridge_a_076',
+  'greenhouse_b_077','greenhouse_a_078','greenhouse_a_079','greenhouse_b_080',
+  'structures_a03_002__081','structures_a_082','bridge_a_083',
+  'farm_084','cratebox_085','cratebox_086',
+  'milktank_087','watersprinkler_088',
+  'bench_089','table_090','table_091',
+  'cart_092','cart_093','cart_094','cart_095',
+  'bench_096','streetsign_097','barrel_098','streetsign_099',
+  'cratebox_100','cratebox_101','barrel_102',
+  'streetlight_103','streetlight_104',
+  'chair_105','chair_106','chair_107','chair_108',
+  'strawpack_109','fooddish_110','cart_111','littlefoodholder_112',
+  'bench_113','table_114','cratebox_115',
+  'streetlight_116','streetlight_117','littlefoodholder_118',
+  'lawn_mower_119','lawn_mower_120',
+  'tree_121','tree_122','tree_123','tree_124','tree_125','tree_126','tree_127',
+  'tree_128','tree_129','tree_130','tree_131','tree_132','tree_133','tree_134',
+  'tree_135','tree_136','tree_137','tree_138',
+];
+
+/** Park .vox file names — field parts, objects, and tree */
+const VOX_PARK_FIELD_IDS = ['field_grass_001', 'field_water_002'];
+const VOX_PARK_OBJECT_IDS = [
+  'obj_basketball_red_001', 'obj_basketball_red_012',
+  'obj_basketball_red_013', 'obj_basketball_red_014',
+  'obj_bench_011', 'obj_bridge_006', 'obj_ground_002', 'obj_line_003',
+  'obj_material_005', 'obj_picnic_table_010', 'obj_sand_004',
+  'obj_swings02_009', 'obj_swings1_008', 'obj_tennis_table_007',
+];
+const VOX_PARK_TREE_ID = 'park_tree';
+
+/** Village Southern Europe — tile IDs (4×4 grid) and asset IDs */
+const VOX_VILLAGE_TILE_IDS = Array.from({ length: 16 }, (_, i) =>
+  `tile_${Math.floor(i / 4)}_${i % 4}`,
+);
+const VOX_VILLAGE_ASSET_IDS = [
+  'window_1','window_2','window_3','window_4','window_5','window_6',
+  'door_1','door_2','door_3','brick','pole_1','pole_2',
+  'roof_1','roof_2','chimney','stairs','gate_1','gate_2','fence','light',
+  'tree_1','tree_2','tree_3','tree_4','tree_5','tree_6',
+  'flower_1','flower_2','rock_1','rock_2','rock_3','rock_4','rock_5','rock_6','rock_7',
+  'chair','table_1','table_2','table_3','table_4','table_5','table_6','pot',
+  'house_1','house_2','house_3','house_4',
+];
+
+/** Mushroom .vox file names converted from Low-Poly Mushroom Collection */
+const VOX_MUSHROOM_IDS = [
+  'amanita', 'brown-cap_boletus', 'cep', 'chanterelle', 'green_russule',
+  'honey_mushroom', 'milk_mushroom', 'moss-fly_mushroom', 'oily_mushroom',
+  'orange-cap_boletus', 'oyster_mushroom', 'purple_russule',
+  'saffron_milk_cap', 'umbrella_mushroom', 'yellow_mushroom',
+];
+
 function registerDefaults(): void {
   // .vox file objects (from 3D models)
   registerObject({ id: 'tree_190', type: 'tree', source: { kind: 'vox', url: '/field/190.vox' } });
+
+  // Low-Poly Tree Collection .vox trees
+  for (const tid of VOX_TREE_IDS) {
+    registerObject({
+      id: `tree_${tid}`,
+      type: 'tree',
+      source: { kind: 'vox', url: `/api/game-assets/field/tree/tree_${tid}.vox` },
+    });
+  }
+
+  // Broadleaf trees (maple, poplar, whitePoplar)
+  for (const bid of VOX_BROADLEAF_IDS) {
+    registerObject({
+      id: `tree2_${bid}`,
+      type: 'tree',
+      source: { kind: 'vox', url: `/api/game-assets/field/tree2/${bid}.vox` },
+    });
+  }
+
+  // Tree3 (maple + generic trees)
+  for (const t3id of VOX_TREE3_IDS) {
+    registerObject({
+      id: `tree3_${t3id}`,
+      type: 'tree',
+      source: { kind: 'vox', url: `/api/game-assets/field/tree3/${t3id}.vox` },
+    });
+  }
+
+  // Low-Poly Mushroom Collection .vox mushrooms
+  for (const mid of VOX_MUSHROOM_IDS) {
+    registerObject({
+      id: `mushroom_${mid}`,
+      type: 'mushroom',
+      source: { kind: 'vox', url: `/api/game-assets/field/mushroom/${mid}.vox` },
+    });
+  }
+
+  // Farm/Building .vox objects
+  for (const bid of VOX_BUILDING_IDS) {
+    registerObject({
+      id: `building_${bid}`,
+      type: 'building',
+      source: { kind: 'vox', url: `/api/game-assets/field/building/${bid}.vox` },
+    });
+  }
+
+  // Park field parts
+  for (const pid of VOX_PARK_FIELD_IDS) {
+    registerObject({
+      id: `park_${pid}`,
+      type: 'field',
+      source: { kind: 'vox', url: `/api/game-assets/field/park/${pid}.vox` },
+    });
+  }
+
+  // Park objects
+  for (const pid of VOX_PARK_OBJECT_IDS) {
+    registerObject({
+      id: `park_${pid}`,
+      type: 'structure',
+      source: { kind: 'vox', url: `/api/game-assets/field/park/${pid}.vox` },
+    });
+  }
+
+  // Park tree
+  registerObject({
+    id: `park_${VOX_PARK_TREE_ID}`,
+    type: 'tree',
+    source: { kind: 'vox', url: `/api/game-assets/field/park/${VOX_PARK_TREE_ID}.vox` },
+  });
+
+  // Village Southern Europe — field tiles
+  for (const tid of VOX_VILLAGE_TILE_IDS) {
+    registerObject({
+      id: `village_${tid}`,
+      type: 'field',
+      source: { kind: 'vox', url: `/api/game-assets/field/village/tiles/${tid}.vox` },
+    });
+  }
+
+  // Village Southern Europe — assets
+  for (const aid of VOX_VILLAGE_ASSET_IDS) {
+    registerObject({
+      id: `village_${aid}`,
+      type: 'structure',
+      source: { kind: 'vox', url: `/api/game-assets/field/village/objects/${aid}.vox` },
+    });
+  }
 
   // Procedural fallbacks
   registerObject({ id: 'tree_default', type: 'tree', source: { kind: 'procedural', generator: 'tree' } });
@@ -160,15 +336,80 @@ function registerDefaults(): void {
 
 function createDefaultLayout(): FieldLayout {
   const zone = STAGE_CONFIG.activeZone;
+
+  // Showcase placements: place several converted trees near the arena
+  const showcaseTrees: ObjectPlacement[] = [
+    { objectId: 'tree_001', x: 10, z: 0 },
+    { objectId: 'tree_003', x: -10, z: 5 },
+    { objectId: 'tree_050', x: 8, z: -8 },
+    { objectId: 'tree_060', x: -8, z: -6 },
+    { objectId: 'tree_090', x: 12, z: 6 },
+    { objectId: 'tree_120', x: -12, z: -3 },
+  ];
+
+  // Scatter rules using converted tree variety
+  const treeScatterRules: ScatterRule[] = VOX_TREE_IDS.map((tid, i) => ({
+    objectId: `tree_${tid}`,
+    density: 0.003,
+    gridStep: 3,
+    minDistFromCenter: zone.halfX + 3,
+    seed: 5000 + i * 137,
+  }));
+
+  // Scatter rules for broadleaf trees
+  const broadleafScatterRules: ScatterRule[] = VOX_BROADLEAF_IDS.map((bid, i) => ({
+    objectId: `tree2_${bid}`,
+    density: 0.003,
+    gridStep: 3,
+    minDistFromCenter: zone.halfX + 3,
+    seed: 7000 + i * 113,
+  }));
+
+  // Scatter rules for tree3 (maple + generic)
+  const tree3ScatterRules: ScatterRule[] = VOX_TREE3_IDS.map((t3id, i) => ({
+    objectId: `tree3_${t3id}`,
+    density: 0.003,
+    gridStep: 3,
+    minDistFromCenter: zone.halfX + 3,
+    seed: 9000 + i * 151,
+  }));
+
+  // Scatter rules for buildings (low density, spread out)
+  const buildingScatterRules: ScatterRule[] = VOX_BUILDING_IDS.map((bid, i) => ({
+    objectId: `building_${bid}`,
+    density: 0.001,
+    gridStep: 5,
+    minDistFromCenter: zone.halfX + 5,
+    seed: 10000 + i * 73,
+  }));
+
+  // Scatter rules for park objects
+  const parkScatterRules: ScatterRule[] = VOX_PARK_OBJECT_IDS.map((pid, i) => ({
+    objectId: `park_${pid}`,
+    density: 0.002,
+    gridStep: 4,
+    minDistFromCenter: zone.halfX + 4,
+    seed: 11000 + i * 89,
+  }));
+
+  // Scatter rules for mushrooms
+  const mushroomScatterRules: ScatterRule[] = VOX_MUSHROOM_IDS.map((mid, i) => ({
+    objectId: `mushroom_${mid}`,
+    density: 0.004,
+    gridStep: 2,
+    minDistFromCenter: zone.halfX + 1,
+    seed: 8000 + i * 97,
+  }));
+
   return {
-    placements: [
-      // Test: place a .vox tree near the arena
-      { objectId: 'tree_190', x: 10, z: 0 },
-      { objectId: 'tree_190', x: -10, z: 5 },
-      { objectId: 'tree_190', x: 8, z: -8 },
-    ],
+    placements: showcaseTrees,
     scatterRules: [
-      { objectId: 'tree_default',   density: 0.03, gridStep: 2, minDistFromCenter: zone.halfX + 3 },
+      ...treeScatterRules,
+      ...broadleafScatterRules,
+      ...tree3ScatterRules,
+      ...buildingScatterRules,
+      ...parkScatterRules,
+      ...mushroomScatterRules,
       { objectId: 'rock_default',   density: 0.02, gridStep: 3, minDistFromCenter: zone.halfX + 2 },
       { objectId: 'flower_default', density: 0.015, gridStep: 1, minDistFromCenter: 0, seed: 2000 },
       { objectId: 'grass_default',  density: 0.04,  gridStep: 1, minDistFromCenter: 0, seed: 3000 },
@@ -177,42 +418,166 @@ function createDefaultLayout(): FieldLayout {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Voxel mesh builder (same technique as characters)
+// Voxel mesh builder (greedy meshing — combines adjacent same-color
+// voxel faces into single rectangular quads to minimize triangle count).
 // ═══════════════════════════════════════════════════════════════════
 
+/**
+ * Build a voxel mesh using greedy meshing.
+ * Returns a single Mesh with vertex colors and exposed-face culling.
+ */
 export function buildVoxelObjectMesh(
   voxels: VoxelEntry[], scene: Scene, name: string, scale: number,
 ): Mesh {
-  const occupied = new Set<string>();
-  for (const v of voxels) occupied.add(`${v.x},${v.y},${v.z}`);
+  const mesh = new Mesh(name, scene);
+  if (voxels.length === 0) {
+    mesh.material = createUnlitMaterial(scene, name + '_mat');
+    mesh.isPickable = false;
+    mesh.alwaysSelectAsActiveMesh = true;
+    return mesh;
+  }
 
+  // ── Compute voxel bounds ─────────────────────────────────────────
+  let minVX = Infinity, minVY = Infinity, minVZ = Infinity;
+  let maxVX = -Infinity, maxVY = -Infinity, maxVZ = -Infinity;
+  for (const v of voxels) {
+    if (v.x < minVX) minVX = v.x; if (v.x > maxVX) maxVX = v.x;
+    if (v.y < minVY) minVY = v.y; if (v.y > maxVY) maxVY = v.y;
+    if (v.z < minVZ) minVZ = v.z; if (v.z > maxVZ) maxVZ = v.z;
+  }
+  const dimX = maxVX - minVX + 1;
+  const dimY = maxVY - minVY + 1;
+  const dimZ = maxVZ - minVZ + 1;
+
+  // ── Build palette + color-indexed grid ───────────────────────────
+  const palette: { r: number; g: number; b: number }[] = [];
+  const colorMap = new Map<number, number>();
+  const grid = new Uint16Array(dimX * dimY * dimZ); // 0 = empty, 1+ = palette index
+
+  for (const v of voxels) {
+    const k = (Math.round(v.r * 255) << 16) | (Math.round(v.g * 255) << 8) | Math.round(v.b * 255);
+    let idx = colorMap.get(k);
+    if (idx === undefined) {
+      idx = palette.length + 1;
+      palette.push({ r: v.r, g: v.g, b: v.b });
+      colorMap.set(k, idx);
+    }
+    const lx = v.x - minVX, ly = v.y - minVY, lz = v.z - minVZ;
+    grid[lx + ly * dimX + lz * dimX * dimY] = idx;
+  }
+
+  // ── Greedy meshing ───────────────────────────────────────────────
   const positions: number[] = [];
   const normals: number[] = [];
   const colors: number[] = [];
   const indices: number[] = [];
 
-  for (const voxel of voxels) {
-    for (let f = 0; f < 6; f++) {
-      const [dx, dy, dz] = FACE_DIRS[f];
-      if (occupied.has(`${voxel.x + dx},${voxel.y + dy},${voxel.z + dz}`)) continue;
+  const dims = [dimX, dimY, dimZ];
 
-      const bi = positions.length / 3;
-      const fv = FACE_VERTS[f];
-      const fn = FACE_NORMALS[f];
-      for (let vi = 0; vi < 4; vi++) {
-        positions.push(
-          (voxel.x + fv[vi][0]) * scale,
-          (voxel.z + fv[vi][2]) * scale,
-          -(voxel.y + fv[vi][1]) * scale,
-        );
-        normals.push(fn[0], fn[2], -fn[1]);
-        colors.push(voxel.r, voxel.g, voxel.b, 1);
+  // Voxel-local vertex coords (vox0, vox1, vox2) → viewer-space position
+  // Convention: viewer X = voxel X, viewer Y = voxel Z, viewer Z = -voxel Y
+  const pushViewerPos = (vox0: number, vox1: number, vox2: number) => {
+    positions.push(
+      (vox0 + minVX) * scale,
+      (vox2 + minVZ) * scale,
+      -(vox1 + minVY) * scale,
+    );
+  };
+
+  for (let d = 0; d < 3; d++) {
+    const u = (d + 1) % 3;
+    const vAxis = (d + 2) % 3;
+    const sliceU = dims[u];
+    const sliceV = dims[vAxis];
+    const mask = new Int32Array(sliceU * sliceV);
+
+    const x = [0, 0, 0];
+    const q = [0, 0, 0]; q[d] = 1;
+
+    // Sweep slice planes from -1 (just before grid) to dims[d]-1
+    for (x[d] = -1; x[d] < dims[d]; ) {
+      // Build mask: positive = +d-facing voxel, negative = -d-facing voxel
+      let n = 0;
+      for (x[vAxis] = 0; x[vAxis] < sliceV; x[vAxis]++) {
+        for (x[u] = 0; x[u] < sliceU; x[u]++) {
+          const a = (x[d] >= 0)
+            ? grid[x[0] + x[1] * dimX + x[2] * dimX * dimY]
+            : 0;
+          const bx = x[0] + q[0], by = x[1] + q[1], bz = x[2] + q[2];
+          const b = (x[d] < dims[d] - 1)
+            ? grid[bx + by * dimX + bz * dimX * dimY]
+            : 0;
+          if (a !== 0 && b === 0) mask[n] = a;
+          else if (a === 0 && b !== 0) mask[n] = -b;
+          else mask[n] = 0;
+          n++;
+        }
       }
-      indices.push(bi, bi + 1, bi + 2, bi, bi + 2, bi + 3);
+
+      x[d]++;
+
+      // Greedy rectangle extraction
+      n = 0;
+      for (let j = 0; j < sliceV; j++) {
+        for (let i = 0; i < sliceU; ) {
+          const c = mask[n];
+          if (c !== 0) {
+            // Determine width along u
+            let w = 1;
+            while (i + w < sliceU && mask[n + w] === c) w++;
+            // Determine height along v
+            let h = 1;
+            outer: while (j + h < sliceV) {
+              for (let k = 0; k < w; k++) {
+                if (mask[n + k + h * sliceU] !== c) break outer;
+              }
+              h++;
+            }
+
+            // Emit quad
+            x[u] = i; x[vAxis] = j;
+            const du = [0, 0, 0]; du[u] = w;
+            const dv = [0, 0, 0]; dv[vAxis] = h;
+
+            const colorIdx = c > 0 ? c : -c;
+            const col = palette[colorIdx - 1];
+            const sign = c > 0 ? 1 : -1;
+
+            // Normal (in viewer space): voxel axis d w/ sign → viewer
+            //   d=0 → viewer X, d=1 → viewer -Z, d=2 → viewer Y
+            let nx = 0, ny = 0, nz = 0;
+            if (d === 0) nx = sign;
+            else if (d === 1) nz = -sign;
+            else ny = sign;
+
+            const baseIndex = positions.length / 3;
+            pushViewerPos(x[0], x[1], x[2]);
+            pushViewerPos(x[0] + du[0], x[1] + du[1], x[2] + du[2]);
+            pushViewerPos(x[0] + du[0] + dv[0], x[1] + du[1] + dv[1], x[2] + du[2] + dv[2]);
+            pushViewerPos(x[0] + dv[0], x[1] + dv[1], x[2] + dv[2]);
+
+            for (let k = 0; k < 4; k++) {
+              normals.push(nx, ny, nz);
+              colors.push(col.r, col.g, col.b, 1);
+            }
+            indices.push(baseIndex, baseIndex + 1, baseIndex + 2);
+            indices.push(baseIndex, baseIndex + 2, baseIndex + 3);
+
+            // Clear mask cells covered by this rectangle
+            for (let k = 0; k < w; k++) {
+              for (let m = 0; m < h; m++) {
+                mask[n + k + m * sliceU] = 0;
+              }
+            }
+            i += w; n += w;
+          } else {
+            i++; n++;
+          }
+        }
+      }
     }
   }
 
-  const mesh = new Mesh(name, scene);
   const vd = new VertexData();
   vd.positions = positions;
   vd.normals = normals;
@@ -221,6 +586,7 @@ export function buildVoxelObjectMesh(
   vd.applyToMesh(mesh);
   mesh.material = createUnlitMaterial(scene, name + '_mat');
   mesh.isPickable = false;
+  mesh.alwaysSelectAsActiveMesh = true;
   return mesh;
 }
 

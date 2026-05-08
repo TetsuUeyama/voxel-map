@@ -56,6 +56,23 @@ export const BATTLE_ZONES: Record<string, BattleZone> = {
   full:  { halfX: 20, halfZ: 20 },   // 40×40  — full open field
 };
 
+/** Selectable terrain modes (mutually exclusive) */
+export type TerrainKind = 'flat' | 'village' | 'park' | 'warehouse' | 'city' | 'cafe';
+
+/** Village voxel terrain config (uses pre-built tiles from game-assets) */
+export interface VillageTerrainSettings {
+  /** Number of tiles to load (1..16). Use small values during perf testing. */
+  maxTiles: number;
+  /** Viewer-units per voxel. 0.05 → full 4×4 grid fits 40×40 viewer field. */
+  voxelScale: number;
+}
+
+/** Park terrain config (flat field + hand-placed objects) */
+export interface ParkTerrainSettings {
+  fieldScale: number;
+  objectScale: number;
+}
+
 /** Fight stage settings */
 export const STAGE_CONFIG = {
   /** Full open field half-extents (render size) */
@@ -69,6 +86,18 @@ export const STAGE_CONFIG = {
   roundTime: 90,           // seconds (longer for team battle)
   roundsToWin: 2,
   hitstopFrames: 3,        // frames to freeze on hit
+  /** Active terrain mode */
+  terrain: 'warehouse' as TerrainKind,
+  /** Village mode settings (used when terrain === 'village') */
+  village: {
+    maxTiles: 1,
+    voxelScale: 0.05,
+  } as VillageTerrainSettings,
+  /** Park mode settings (used when terrain === 'park') */
+  park: {
+    fieldScale: 0.2,
+    objectScale: 0.05,
+  } as ParkTerrainSettings,
 };
 
 /** Player spawn positions (viewer XZ) — kept for reference */

@@ -1,3 +1,5 @@
+import { VoxelMapViewer } from '@/components/VoxelMapViewer';
+
 export default function Home() {
-  return <div>Voxel Map</div>;
+  return <VoxelMapViewer />;
 }

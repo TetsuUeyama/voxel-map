@@ -10,7 +10,14 @@ import {
 } from '@babylonjs/core';
 import { STAGE_CONFIG } from '@/GamePlay/FightGame/Config/FighterConfig';
 import { buildVoxelTerrain } from '@/GamePlay/FightGame/Stage/TerrainBuilder';
+import { buildVillageTerrain } from '@/GamePlay/FightGame/Stage/VillageTerrain';
+import { buildParkTerrain } from '@/GamePlay/FightGame/Stage/ParkTerrain';
+import { buildWarehouseTerrain } from '@/GamePlay/FightGame/Stage/WarehouseTerrain';
+import { buildCityTerrain } from '@/GamePlay/FightGame/Stage/CityTerrain';
+import { buildCafeTerrain } from '@/GamePlay/FightGame/Stage/CafeTerrain';
+import type { ModelProgress } from '@/GamePlay/FightGame/Stage/VoxelModelLoader';
 import type { FieldLayout } from '@/GamePlay/FightGame/Stage/TerrainObjectRegistry';
+import type { TerrainKind } from '@/GamePlay/FightGame/Config/FighterConfig';
 
 export interface StageElements {
   meshes: Mesh[];
@@ -18,35 +25,83 @@ export interface StageElements {
   glowLayer: GlowLayer;
 }
 
+export interface BuildStageOptions {
+  layout?: FieldLayout;
+  /** Override terrain mode (defaults to STAGE_CONFIG.terrain) */
+  terrain?: TerrainKind;
+  /** Progress callback for chunked voxel model loading (warehouse/city) */
+  onModelProgress?: (p: ModelProgress) => void;
+}
+
 /**
  * Build the open field stage with voxel objects.
  * Optionally accepts a FieldLayout for custom object placement.
  * Call once after scene creation.
  */
-export async function buildStage(scene: Scene, layout?: FieldLayout): Promise<StageElements> {
+export async function buildStage(scene: Scene, options: BuildStageOptions = {}): Promise<StageElements> {
+  const { layout, onModelProgress } = options;
   const fhx = STAGE_CONFIG.fieldHalfX;
   const fhz = STAGE_CONFIG.fieldHalfZ;
   const zone = STAGE_CONFIG.activeZone;
   const meshes: Mesh[] = [];
   const lights: PointLight[] = [];
+  const terrain: TerrainKind = options.terrain ?? STAGE_CONFIG.terrain;
 
-  // === GROUND PLANE (grass-colored) ===
-  const ground = MeshBuilder.CreateGround('ground', {
-    width: fhx * 2 + 4,
-    height: fhz * 2 + 4,
-    subdivisions: 1,
-  }, scene);
-  ground.position.y = STAGE_CONFIG.groundY;
-  const gMat = new StandardMaterial('gMat', scene);
-  gMat.diffuseColor = new Color3(0.25, 0.55, 0.20);
-  gMat.specularColor = new Color3(0.05, 0.05, 0.05);
-  ground.material = gMat;
-  ground.isPickable = false;
-  meshes.push(ground);
+  // === GROUND PLANE — only for 'flat' terrain mode ===
+  if (terrain === 'flat') {
+    const ground = MeshBuilder.CreateGround('ground', {
+      width: fhx * 2 + 4,
+      height: fhz * 2 + 4,
+      subdivisions: 1,
+    }, scene);
+    ground.position.y = STAGE_CONFIG.groundY;
+    const gMat = new StandardMaterial('gMat', scene);
+    gMat.diffuseColor = new Color3(0.25, 0.55, 0.20);
+    gMat.specularColor = new Color3(0.05, 0.05, 0.05);
+    ground.material = gMat;
+    ground.isPickable = false;
+    meshes.push(ground);
 
-  // === VOXEL OBJECTS (trees, rocks, flowers, grass) ===
-  const voxelObjects = await buildVoxelTerrain(scene, layout);
-  meshes.push(...voxelObjects);
+    // Procedural scatter (trees / rocks / flowers / grass)
+    const voxelObjects = await buildVoxelTerrain(scene, layout);
+    meshes.push(...voxelObjects);
+  }
+
+  // === VILLAGE TERRAIN (pre-built voxel tiles with elevation) ===
+  if (terrain === 'village') {
+    const villageMeshes = await buildVillageTerrain(scene, {
+      maxTiles: STAGE_CONFIG.village.maxTiles,
+      voxelScale: STAGE_CONFIG.village.voxelScale,
+    });
+    meshes.push(...villageMeshes);
+  }
+
+  // === PARK TERRAIN (flat tiles + hand-placed objects) ===
+  if (terrain === 'park') {
+    const parkMeshes = await buildParkTerrain(scene, {
+      fieldScale: STAGE_CONFIG.park.fieldScale,
+      objectScale: STAGE_CONFIG.park.objectScale,
+    });
+    meshes.push(...parkMeshes);
+  }
+
+  // === WAREHOUSE (voxelized .blend) ===
+  if (terrain === 'warehouse') {
+    const wMeshes = await buildWarehouseTerrain(scene, onModelProgress);
+    meshes.push(...wMeshes);
+  }
+
+  // === CITY (voxelized NEW+CITY.1blend.blend) ===
+  if (terrain === 'city') {
+    const cMeshes = await buildCityTerrain(scene, onModelProgress);
+    meshes.push(...cMeshes);
+  }
+
+  // === CAFE (voxelized Cafe.fbx) ===
+  if (terrain === 'cafe') {
+    const cMeshes = await buildCafeTerrain(scene, onModelProgress);
+    meshes.push(...cMeshes);
+  }
 
   // === ACTIVE ZONE BORDER ===
   const zoneBorderThickness = 0.06;
