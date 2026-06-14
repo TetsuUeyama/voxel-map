@@ -13,8 +13,9 @@ import { buildVoxelTerrain } from '@/GamePlay/FightGame/Stage/TerrainBuilder';
 import { buildVillageTerrain } from '@/GamePlay/FightGame/Stage/VillageTerrain';
 import { buildParkTerrain } from '@/GamePlay/FightGame/Stage/ParkTerrain';
 import { buildWarehouseTerrain } from '@/GamePlay/FightGame/Stage/WarehouseTerrain';
-import { buildCityTerrain } from '@/GamePlay/FightGame/Stage/CityTerrain';
+import { buildCityTerrain, type CityBuildingEntry } from '@/GamePlay/FightGame/Stage/CityTerrain';
 import { buildCafeTerrain } from '@/GamePlay/FightGame/Stage/CafeTerrain';
+import { buildNewCityTerrain } from '@/GamePlay/FightGame/Stage/NewCityTerrain';
 import type { ModelProgress } from '@/GamePlay/FightGame/Stage/VoxelModelLoader';
 import type { FieldLayout } from '@/GamePlay/FightGame/Stage/TerrainObjectRegistry';
 import type { TerrainKind } from '@/GamePlay/FightGame/Config/FighterConfig';
@@ -23,6 +24,8 @@ export interface StageElements {
   meshes: Mesh[];
   lights: PointLight[];
   glowLayer: GlowLayer;
+  /** Populated for terrain='city' — toggleable buildings registry. */
+  cityBuildings?: CityBuildingEntry[];
 }
 
 export interface BuildStageOptions {
@@ -46,6 +49,7 @@ export async function buildStage(scene: Scene, options: BuildStageOptions = {}):
   const meshes: Mesh[] = [];
   const lights: PointLight[] = [];
   const terrain: TerrainKind = options.terrain ?? STAGE_CONFIG.terrain;
+  let cityBuildings: CityBuildingEntry[] | undefined;
 
   // === GROUND PLANE — only for 'flat' terrain mode ===
   if (terrain === 'flat') {
@@ -93,14 +97,22 @@ export async function buildStage(scene: Scene, options: BuildStageOptions = {}):
 
   // === CITY (voxelized NEW+CITY.1blend.blend) ===
   if (terrain === 'city') {
-    const cMeshes = await buildCityTerrain(scene, onModelProgress);
-    meshes.push(...cMeshes);
+    const cityResult = await buildCityTerrain(scene, onModelProgress);
+    meshes.push(...cityResult.meshes);
+    cityBuildings = cityResult.buildings;
   }
 
   // === CAFE (voxelized Cafe.fbx) ===
   if (terrain === 'cafe') {
     const cMeshes = await buildCafeTerrain(scene, onModelProgress);
     meshes.push(...cMeshes);
+  }
+
+  // === NEWCITY (voxelized SimplePoly City, prototype-only) ===
+  if (terrain === 'newcity') {
+    const ncResult = await buildNewCityTerrain(scene, onModelProgress);
+    meshes.push(...ncResult.meshes);
+    cityBuildings = ncResult.buildings;
   }
 
   // === ACTIVE ZONE BORDER ===
@@ -160,5 +172,5 @@ export async function buildStage(scene: Scene, options: BuildStageOptions = {}):
   });
   glowLayer.intensity = 0.3;
 
-  return { meshes, lights, glowLayer };
+  return { meshes, lights, glowLayer, cityBuildings };
 }

@@ -57,7 +57,7 @@ export const BATTLE_ZONES: Record<string, BattleZone> = {
 };
 
 /** Selectable terrain modes (mutually exclusive) */
-export type TerrainKind = 'flat' | 'village' | 'park' | 'warehouse' | 'city' | 'cafe';
+export type TerrainKind = 'flat' | 'village' | 'park' | 'warehouse' | 'city' | 'cafe' | 'newcity';
 
 /** Village voxel terrain config (uses pre-built tiles from game-assets) */
 export interface VillageTerrainSettings {

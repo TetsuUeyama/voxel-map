@@ -7,6 +7,8 @@ import {
 import { buildStage } from '@/GamePlay/FightGame/Stage/StageBuilder';
 import type { ModelProgress } from '@/GamePlay/FightGame/Stage/VoxelModelLoader';
 import type { TerrainKind } from '@/GamePlay/FightGame/Config/FighterConfig';
+import type { CityBuildingEntry } from '@/GamePlay/FightGame/Stage/CityTerrain';
+import { CityBuildingsPanel } from '@/components/CityBuildingsPanel';
 
 interface Stats {
   fps: number;
@@ -18,13 +20,17 @@ interface Stats {
 export interface VoxelMapViewerProps {
   /** Override terrain mode. Defaults to STAGE_CONFIG.terrain. */
   terrain?: TerrainKind;
+  /** Max camera distance (radius). Defaults to 120 (suitable for ~30m cities).
+      Use larger value for big scenes like newcity (~300m). */
+  cameraMax?: number;
 }
 
-export function VoxelMapViewer({ terrain }: VoxelMapViewerProps = {}) {
+export function VoxelMapViewer({ terrain, cameraMax }: VoxelMapViewerProps = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [stats, setStats] = useState<Stats>({ fps: 0, totalMeshes: 0, activeMeshes: 0, activeIndices: 0 });
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState<ModelProgress | null>(null);
+  const [cityBuildings, setCityBuildings] = useState<CityBuildingEntry[] | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -34,26 +40,38 @@ export function VoxelMapViewer({ terrain }: VoxelMapViewerProps = {}) {
     const scene = new Scene(engine);
     scene.clearColor = new Color4(0.55, 0.75, 0.95, 1);
 
+    const maxRadius = cameraMax ?? 120;
+    // For large scenes pick an initial radius that shows the whole bbox; for
+    // small scenes keep the original 45 (good close-up of a 30 m city).
+    const initialRadius = maxRadius > 200 ? maxRadius * 0.5 : 45;
     const camera = new ArcRotateCamera(
       'cam',
       -Math.PI / 2.5,
       Math.PI / 3,
-      45,
+      initialRadius,
       new Vector3(0, 1, 0),
       scene,
     );
     camera.attachControl(canvas, true);
     camera.lowerRadiusLimit = 5;
-    camera.upperRadiusLimit = 120;
-    camera.wheelDeltaPercentage = 0.02;
-    camera.panningSensibility = 50;
+    camera.upperRadiusLimit = maxRadius;
+    // Faster zoom for large scenes
+    camera.wheelDeltaPercentage = maxRadius > 200 ? 0.05 : 0.02;
+    camera.panningSensibility = maxRadius > 200 ? 20 : 50;
+    // Broaden far plane so distant prototypes don't get clipped at full zoom out.
+    if (maxRadius > 200) camera.maxZ = maxRadius * 4;
 
     let cancelled = false;
     buildStage(scene, {
       terrain,
       onModelProgress: (p) => { if (!cancelled) setProgress(p); },
     })
-      .then(() => { if (!cancelled) { setLoading(false); setProgress(null); } })
+      .then((result) => {
+        if (cancelled) return;
+        setLoading(false);
+        setProgress(null);
+        if (result.cityBuildings) setCityBuildings(result.cityBuildings);
+      })
       .catch((err) => { console.error('buildStage failed', err); if (!cancelled) setLoading(false); });
 
     engine.runRenderLoop(() => scene.render());
@@ -99,6 +117,9 @@ export function VoxelMapViewer({ terrain }: VoxelMapViewerProps = {}) {
       <div style={hintStyle}>
         Mouse: drag = orbit / wheel = zoom / right drag = pan
       </div>
+      {cityBuildings && cityBuildings.length > 0 && (
+        <CityBuildingsPanel buildings={cityBuildings} />
+      )}
     </div>
   );
 }
