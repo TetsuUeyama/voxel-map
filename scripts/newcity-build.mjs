@@ -312,6 +312,17 @@ const totalGridZ = Math.ceil(sizeZ / VOXEL_SIZE) + 1;
 console.log(`Global bbox: ${sizeX.toFixed(2)} × ${sizeY.toFixed(2)} × ${sizeZ.toFixed(2)} m`);
 console.log(`Total grid : ${totalGridX} × ${totalGridY} × ${totalGridZ} (voxels @ ${VOXEL_SIZE} m)`);
 
+// Bit-pack stride for the voxel key (key = gx + gy*STRIDE + gz*STRIDE²).
+// MUST exceed every grid dimension, otherwise a voxel with gy ≥ STRIDE wraps
+// into the gz digit on extraction and geometry gets torn into far-apart
+// clusters (e.g. a house split ~192 m apart). 4096 was too small for this
+// scene (grid Y = 5120), so derive it from the actual max dimension.
+const maxGridDim = Math.max(totalGridX, totalGridY, totalGridZ);
+let STRIDE = 4096;
+while (STRIDE <= maxGridDim) STRIDE *= 2;
+const STRIDE2 = STRIDE * STRIDE;
+console.log(`Bit-pack stride: ${STRIDE} (max grid dim = ${maxGridDim}); max key ≈ ${(maxGridDim + maxGridDim * STRIDE + totalGridZ * STRIDE2).toExponential(1)} (safe < 9.0e15)`);
+
 // ============================================================
 // Voxelize each CANONICAL group (only those faces). Each prototype
 // gets its own voxelMap.
@@ -356,7 +367,7 @@ for (let fi = 0; fi < numFaces; fi++) {
       const gx = ((px - minX) / VS) | 0;
       const gy = ((py - minY) / VS) | 0;
       const gz = ((pz - minZ) / VS) | 0;
-      const key = gx + gy * 4096 + gz * 16777216;
+      const key = gx + gy * STRIDE + gz * STRIDE2;
       if (!m.has(key)) m.set(key, ci);
     }
   }
@@ -461,10 +472,10 @@ function writeVoxFile(filePath, gridW, gridH, gridD, voxels) {
 function writeBucket(voxelMap, outDir, name) {
   const chunkBuckets = new Map();
   for (const [key, rawCi] of voxelMap) {
-    const gx = key % 4096;
-    const tmp = Math.floor(key / 4096);
-    const gy = tmp % 4096;
-    const gz = Math.floor(tmp / 4096);
+    const gx = key % STRIDE;
+    const tmp = Math.floor(key / STRIDE);
+    const gy = tmp % STRIDE;
+    const gz = Math.floor(tmp / STRIDE);
     const cx = chunkIndex(gx, chunksX);
     const cy = chunkIndex(gy, chunksY);
     const cz = chunkIndex(gz, chunksZ);

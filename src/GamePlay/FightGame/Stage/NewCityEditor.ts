@@ -18,6 +18,11 @@ import { createUnlitMaterial } from '@/lib/voxel-skeleton';
     road part (Road_Tile_Small at 4.92 × 9.84 m) snaps to integer cells. */
 export const TILE_SIZE_M = 19.685 / 4;  // ≈ 4.92125 m
 
+/** Buildings snap to a finer grid — each road cell subdivides into
+ *  DIVISOR × DIVISOR building cells (2 → 2.46 m building tile). Roads/ground
+ *  keep the full TILE_SIZE_M pitch. */
+export const BUILDING_TILE_DIVISOR = 2;
+
 const BASE_URL = '/api/game-assets/field/newcity';
 const MANIFEST_URL = `${BASE_URL}/prototypes_manifest.json`;
 
@@ -70,12 +75,17 @@ export function layerOfCategory(id: string, category: string): Layer {
   return GROUND_CATEGORIES.has(category) ? 'ground' : 'building';
 }
 
+/** Snap pitch (metres) for a layer. Ground = full tile, building = half. */
+export function tileForLayer(layer: Layer): number {
+  return layer === 'building' ? TILE_SIZE_M / BUILDING_TILE_DIVISOR : TILE_SIZE_M;
+}
+
 interface ProtoState {
   id: string;
   mesh: Mesh;
   canonicalCenter: Vector3;
-  sizeCellsBaseW: number;  // unrotated footprint width  in cells
-  sizeCellsBaseD: number;  // unrotated footprint depth  in cells
+  sizeMW: number;  // unrotated footprint width (X) in metres
+  sizeMD: number;  // unrotated footprint depth (Z) in metres
   instances: Map<string, PlacementInstance>;  // anchorKey → instance
 }
 
@@ -96,15 +106,13 @@ interface Lazy {
 
 function cellKey(i: number, j: number): string { return `${i},${j}`; }
 
-/** Round size_m to integer cell count, with float tolerance: values within
- *  ~1 voxel (0.05 m / 4.92 m ≈ 0.01 cells, but voxelization can add up to
- *  one extra voxel per axis so we widen this to 0.05 cells = 5% slack)
- *  round to that integer, otherwise ceil. */
-function cellsForSize(sizeM: number): number {
-  const cells = sizeM / TILE_SIZE_M;
-  const rounded = Math.round(cells);
-  if (Math.abs(cells - rounded) < 0.05) return Math.max(1, rounded);
-  return Math.max(1, Math.ceil(cells));
+/** Footprint = model size rounded to the NEAREST whole cell (min 1). Rounding
+ *  (not ceil) keeps a part that only slightly overflows a cell — e.g. a 2.6 m
+ *  prop on the 2.46 m building grid — at 1 cell instead of ballooning to 2×2.
+ *  Parts genuinely larger than 1.5 cells still round up as expected. Exact
+ *  multiples (a 19.68 m road on the 4.92 m grid → 4) are unaffected. */
+function cellsForSize(sizeM: number, tileM: number = TILE_SIZE_M): number {
+  return Math.max(1, Math.round(sizeM / tileM));
 }
 
 export class NewCityEditorController {
@@ -138,14 +146,17 @@ export class NewCityEditorController {
   isLoaded(id: string): boolean { return this.protos.has(id); }
   preload(id: string): void { void this.ensureLoaded(id); }
 
-  /** Returns base (unrotated) footprint of a prototype in (w, d) cells.
-   *  Returns null if the prototype hasn't been loaded yet. */
-  getCellFootprint(id: string, rotation: 0 | 1 | 2 | 3 = 0): { w: number; d: number } | null {
+  /** Returns the footprint of a prototype in (w, d) cells for the given layer's
+   *  grid pitch (building = half). Returns null if not loaded yet. */
+  getCellFootprint(
+    id: string, rotation: 0 | 1 | 2 | 3 = 0, layer: Layer = 'building',
+  ): { w: number; d: number } | null {
     const p = this.protos.get(id);
     if (!p) return null;
-    return rotation % 2 === 0
-      ? { w: p.sizeCellsBaseW, d: p.sizeCellsBaseD }
-      : { w: p.sizeCellsBaseD, d: p.sizeCellsBaseW };
+    const tile = tileForLayer(layer);
+    const wM = rotation % 2 === 0 ? p.sizeMW : p.sizeMD;
+    const dM = rotation % 2 === 0 ? p.sizeMD : p.sizeMW;
+    return { w: cellsForSize(wM, tile), d: cellsForSize(dM, tile) };
   }
 
   async ensureLoaded(id: string): Promise<boolean> {
@@ -188,16 +199,18 @@ export class NewCityEditorController {
       }
     }
     const center = new Vector3((mnX + mxX) / 2, (mnY + mxY) / 2, (mnZ + mxZ) / 2);
-    const sizeW = cellsForSize(mxX - mnX);
-    const sizeD = cellsForSize(mxZ - mnZ);
+    const sizeMW = mxX - mnX;
+    const sizeMD = mxZ - mnZ;
     console.log(
       `[NewCityEditor] registerProto ${id}: ` +
-      `size_m=(${(mxX - mnX).toFixed(2)}×${(mxZ - mnZ).toFixed(2)}) → cells=${sizeW}×${sizeD}, ` +
+      `size_m=(${sizeMW.toFixed(2)}×${sizeMD.toFixed(2)}) → ` +
+      `road-cells=${cellsForSize(sizeMW)}×${cellsForSize(sizeMD)} / ` +
+      `bldg-cells=${cellsForSize(sizeMW, tileForLayer('building'))}×${cellsForSize(sizeMD, tileForLayer('building'))}, ` +
       `center=(${center.x.toFixed(1)}, ${center.y.toFixed(1)}, ${center.z.toFixed(1)})`
     );
     this.protos.set(id, {
       id, mesh, canonicalCenter: center,
-      sizeCellsBaseW: sizeW, sizeCellsBaseD: sizeD,
+      sizeMW, sizeMD,
       instances: new Map(),
     });
     mesh.setEnabled(false);
@@ -213,11 +226,14 @@ export class NewCityEditorController {
     const p = this.protos.get(id);
     if (!p) return;
     const owners = this.owners[layer];
-    const w = rotation % 2 === 0 ? p.sizeCellsBaseW : p.sizeCellsBaseD;
-    const d = rotation % 2 === 0 ? p.sizeCellsBaseD : p.sizeCellsBaseW;
+    const tile = tileForLayer(layer);
+    const wM = rotation % 2 === 0 ? p.sizeMW : p.sizeMD;
+    const dM = rotation % 2 === 0 ? p.sizeMD : p.sizeMW;
+    const w = cellsForSize(wM, tile);
+    const d = cellsForSize(dM, tile);
 
     // Buildings may only be placed on top of ground-layer tiles (roads/grass).
-    if (layer === 'building' && !this.hasGroundUnder(i, j, w, d)) {
+    if (layer === 'building' && !this.hasGroundUnder(i, j, w, d, layer)) {
       console.log(`[NewCityEditor] place rejected: no road/ground under footprint at (${i}, ${j}) ${w}×${d}`);
       return;
     }
@@ -249,8 +265,8 @@ export class NewCityEditorController {
       cloned.setPivotPoint(p.canonicalCenter);
       cloned.rotation.y = rotation * Math.PI / 2;
     }
-    const footprintCenterX = (i + w / 2) * TILE_SIZE_M;
-    const footprintCenterZ = (j + d / 2) * TILE_SIZE_M;
+    const footprintCenterX = (i + w / 2) * tile;
+    const footprintCenterZ = (j + d / 2) * tile;
     cloned.position.set(
       footprintCenterX - p.canonicalCenter.x,
       0,
@@ -277,8 +293,8 @@ export class NewCityEditorController {
     cloned.refreshBoundingInfo();
     const bb = cloned.getBoundingInfo().boundingBox;
     console.log(
-      `[NewCityEditor] placed ${id} → anchor=(${i},${j}) footprint=${w}×${d} cells ` +
-      `expected world=[${(i * TILE_SIZE_M).toFixed(2)}..${((i + w) * TILE_SIZE_M).toFixed(2)}] × [${(j * TILE_SIZE_M).toFixed(2)}..${((j + d) * TILE_SIZE_M).toFixed(2)}]`
+      `[NewCityEditor] placed ${id} → anchor=(${i},${j}) footprint=${w}×${d} cells (tile=${tile.toFixed(2)}m) ` +
+      `expected world=[${(i * tile).toFixed(2)}..${((i + w) * tile).toFixed(2)}] × [${(j * tile).toFixed(2)}..${((j + d) * tile).toFixed(2)}]`
     );
     console.log(
       `[NewCityEditor]   actual mesh world bbox: X[${bb.minimumWorld.x.toFixed(2)}..${bb.maximumWorld.x.toFixed(2)}] Z[${bb.minimumWorld.z.toFixed(2)}..${bb.maximumWorld.z.toFixed(2)}]`
@@ -315,11 +331,16 @@ export class NewCityEditorController {
   }
 
   /** True if every cell of the w×d footprint anchored at (i, j) is covered by a
-   *  ground-layer tile (road / grass). Buildings may only sit on the ground. */
-  hasGroundUnder(i: number, j: number, w: number, d: number): boolean {
+   *  ground-layer tile (road / grass). Buildings may only sit on the ground.
+   *  The (i, j) footprint is in `layer`'s grid; building cells are mapped down
+   *  to the coarser ground grid (floor(cell / DIVISOR)) before the lookup. */
+  hasGroundUnder(i: number, j: number, w: number, d: number, layer: Layer = 'building'): boolean {
+    const div = layer === 'building' ? BUILDING_TILE_DIVISOR : 1;
     for (let dx = 0; dx < w; dx++) {
       for (let dz = 0; dz < d; dz++) {
-        if (!this.owners.ground.has(cellKey(i + dx, j + dz))) return false;
+        const gi = Math.floor((i + dx) / div);
+        const gj = Math.floor((j + dz) / div);
+        if (!this.owners.ground.has(cellKey(gi, gj))) return false;
       }
     }
     return true;
@@ -365,7 +386,9 @@ export class NewCityEditorController {
   /** Show a translucent silhouette of `id` at cell (i, j) with `rotation`, using
    *  the exact same transform as place(). Returns true if a ghost is shown,
    *  false if the prototype is not loaded yet (caller can fall back to a box). */
-  updatePreview(id: string, i: number, j: number, rotation: 0 | 1 | 2 | 3): boolean {
+  updatePreview(
+    id: string, i: number, j: number, rotation: 0 | 1 | 2 | 3, layer: Layer = 'building',
+  ): boolean {
     const p = this.protos.get(id);
     if (!p) { this.hidePreview(); return false; }
     const key = `${id}:${rotation}`;
@@ -384,10 +407,11 @@ export class NewCityEditorController {
       this.ghost = g;
       this.ghostKey = key;
     }
-    const w = rotation % 2 === 0 ? p.sizeCellsBaseW : p.sizeCellsBaseD;
-    const d = rotation % 2 === 0 ? p.sizeCellsBaseD : p.sizeCellsBaseW;
-    const fx = (i + w / 2) * TILE_SIZE_M;
-    const fz = (j + d / 2) * TILE_SIZE_M;
+    const tile = tileForLayer(layer);
+    const w = cellsForSize(rotation % 2 === 0 ? p.sizeMW : p.sizeMD, tile);
+    const d = cellsForSize(rotation % 2 === 0 ? p.sizeMD : p.sizeMW, tile);
+    const fx = (i + w / 2) * tile;
+    const fz = (j + d / 2) * tile;
     this.ghost!.position.set(fx - p.canonicalCenter.x, 0, fz - p.canonicalCenter.z);
     this.ghost!.setEnabled(true);
     return true;

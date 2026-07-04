@@ -658,3 +658,75 @@
   - ステータスバーに「（道路の上のみ・赤=不可）」を追記。
 - 確認: `npx tsc --noEmit` 通過。**ブラウザ目視確認は未実施**（道路の上だけ建物が置けるか、赤ハイライトの挙動）。
 - 補足: grass タイルは ground レイヤーに分類済みのため、grass の上にも建物可。道路のみに限定したい場合は `hasGroundUnder` を road 限定に変更可能（要指示）。
+
+### NewCity エディタ: グリッド粒度の試行錯誤 → 最終: 道路4.92m / 建物2.46m
+- 経緯: 一度「全体を1/2(2.46m)に」実装 (TILE_SIZE_M=19.685/8) したが、ユーザー意図確認の結果 **道路・地面=4.92m / 建物=2.46m**（建物は道路の半分グリッド）に確定。AskUserQuestion で 3 択提示し「道路4.92 / 建物2.46」を選択。
+- 実装（レイヤー別タイルを分割数2で導入）:
+  - `NewCityEditor.ts`: `TILE_SIZE_M` を `19.685/4`(≈4.92m) に戻す。`BUILDING_TILE_DIVISOR = 2` / `tileSizeForLayer(layer)` 追加 → ground=4.92m, building=2.46m。
+  - footprint をロード時固定セル数ではなく生メートル (`sizeMW/sizeMD`) で保持し、`cellsForSize(sizeM, tileM)` で配置レイヤーのタイルから都度計算。`getCellFootprint`/`place`/`updatePreview` に `layer` を渡す。
+  - `hasGroundUnder`: 建物グリッドが地面より細かいので、建物セル (bi,bj) → 地面セル (floor(bi/R), floor(bj/R)) に変換して道路被覆を判定。
+  - `NewCityEditorViewer.tsx`: `GRID_CELLS_RADIUS` を 60 に戻す。建物レイヤー時のみ表示する細グリッド (½ピッチ=2.46m) を追加し `useEffect([layer])` で切替。スナップ/hover/footprint をレイヤー別タイルに対応 (hover は `scaleUnit=tile/TILE_SIZE_M`)。
+- 確認: `npx tsc --noEmit` 通過。**ブラウザ目視確認は未実施**（道路は4.92m・建物は2.46mでスナップするか、細グリッド表示、道路の上のみ判定がグリッド差をまたいで正しいか）。
+
+### NewCity エディタ: グリッド細分化を全リバート（位置合わせ仕様が不可解との指摘）
+- ユーザー指摘: 「配置方法の位置合わせが意味の分からない仕様になっている」→ 戻す
+- 上記2エントリ（全体1/2、道路4.92/建物2.46 のレイヤー別グリッド）は全てコミット `caefdfc` 以降の未コミット変更だったため、`git restore --source=HEAD` で **`NewCityEditor.ts` と `NewCityEditorViewer.tsx` をコミット時点に復元**。
+- 復元後の状態: 地面・建物とも単一 4.92m グリッド、レイヤー別タイル/細グリッド/全体1/2 は無し。「建物は道路の上のみ」制約 (`hasGroundUnder`、同一グリッド) は維持。modeless 操作・ゴーストプレビューも維持。
+- 確認: `npx tsc --noEmit` 通過。
+- ※グリッド粒度・位置合わせの正しい仕様は次の指示待ち（これまでの 1/4・全体1/2・レイヤー別 はいずれも不採用）。
+
+### NewCity エディタ: 建物グリッドのみ縦横半分 + 枠を実物サイズに（混乱解消）
+- ユーザー指示（確定・最小要件）: 道路・地面は現状(4.92m)のまま、建物などは縦横半分(≈2.46m)グリッド。それだけ。余計なことで分かりにくくしない
+- 前回「枠が実物より広い」と指摘された点が混乱の原因 → 今回は**枠を実物に合わせる**ことで解消:
+  - `NewCityEditor.ts`: `BUILDING_TILE_DIVISOR=2` / `tileSizeForLayer` 再導入（ground=4.92m, building=2.46m）。footprint は生メートル(`sizeMW/sizeMD`)保持で `cellsForSize(sizeM,tileM)` 都度計算。`getCellFootprint`/`place`/`updatePreview` に layer。`hasGroundUnder` は建物セル→地面セル(`floor(/R)`)変換で道路被覆判定。
+  - **`getModelMeterSize(id,rotation)` 追加** — proto の実 bbox(メートル)を返す。
+  - `NewCityEditorViewer.tsx`: 建物レイヤー時のみ半分グリッド線表示。配置プレビューの hover 枠を**予約セルではなくモデル実寸(メートル)**でスケール（道路は実寸=セル一致なので見た目不変、建物だけ枠が実物ぴったりに）。スナップ/位置はレイヤー別タイル。
+- 確認: `npx tsc --noEmit` 通過。**ブラウザ目視確認は未実施**（建物が2.46m刻みでスナップ・枠が実物大か、道路は従来通りか、道路の上のみ判定）。
+- → ユーザーより「同じことをしている」と再度不採用。`git restore --source=HEAD` で `NewCityEditor.ts`/`NewCityEditorViewer.tsx` を再度コミット時点（単一 4.92m グリッド）に戻した。建物グリッド半分の件は**保留**（要件の取り違えが続いており、次回は実装前に実機挙動を確認するか、ユーザーの具体イメージを得てから着手する）。
+
+### /city ページ: キャラクターを歩かせる三人称ウォークモード（VoxelMapViewer）
+- ユーザー要望: `Downloads/walk-3d-map.html`（Babylon一人称街歩き）参照で、/cityの街を「歩ける」ように。続けて「実際にキャラクターを歩かせて、その視線に町を移す」＝見えるキャラ＋三人称追従カメラへ。
+- `src/components/VoxelMapViewer.tsx` のみ変更（/cityはこのコンポーネント使用）:
+  - `scene.collisionsEnabled=true` / `scene.gravity` を有効化。buildStage完了後、`result.meshes` の地面・建物に `checkCollisions=true`（thin-instanceのproto と compass板は除外）。
+  - 可視アバター（capsule胴＋頭＋+Zバイザー＋腕）を空Meshルートに親子付け。ルートに ellipsoid/ellipsoidOffset で衝突。歩行中のみ表示。
+  - チェイス用 `ArcRotateCamera`（`lockedTarget`=頭付近のTransformNode）。俯瞰オービットcamと右下ボタンで切替、Escで俯瞰復帰。
+  - `onBeforeRenderObservable` で WASD/矢印移動。移動方向は `chaseCam.getDirection(Forward/Right)` を水平射影（利き手非依存）。`player.lookAt` で進行方向を向く（シーンは既定左手系=`useRightHandedSystem`未設定 → +Z前方・yawCor0で正）。Shiftダッシュ、簡易重力＋接地判定、腕振りアニメ。
+- 確認: `npx tsc --noEmit` 通過。**ブラウザ目視確認は未実施**。要検証: ①スポーン位置(z=-12付近)が建物にめり込まないか ②ボクセル建物メッシュへの衝突判定のFPS影響 ③`lockedTarget`にTransformNodeを渡した追従挙動 ④初期alpha(-π/2)でキャラ背後から北向きになるか。
+
+## 2026-06-25
+### ウォークモード: 高架線路の上にワープするバグ修正
+- ユーザー報告: 三人称で道路を歩いていると急に高架線路の上を歩いている
+- 原因: `groundYAt(x,z)` が接地面レイを常に `groundLevel + 200`（=空の高所）から真下に撃ち、`pickWithRay` が最初に当たる面（=最上面）を返していた。高架線路はベース city メッシュの一部で `groundMeshes` に登録されているため、線路下の道路を歩くとレイが頭上の線路天面に先に当たり、その高い Y を返す。クランプ処理 `player.y <= gy → player.y = gy` が道路高(低) ≤ 線路天面(高) を満たし、無条件で線路の上へ持ち上げていた。
+- 修正 (`VoxelMapViewer.tsx`):
+  - `STEP_UP = 0.5`（world m）を追加。段差/縁石ノイズ(~0.1-0.2m)より上、高架線路(数m上)より十分下、という閾値。
+  - `groundYAt(x, z, fromY?)` に始点 `fromY` 引数を追加。歩行中は `player.position.y + STEP_UP` を渡し、足元のすぐ上からレイを撃つ → 頭上の構造物（高架線路/橋）はレイ始点より上なので拾われない。レイ長も `fromY - groundLevel + 500` に調整。
+  - スポーン時 (`enterWalk`) は従来通り高所からの既定値（最上面に着地）。
+- 効果（理論上）: 線路の下の道路ではレイが道路天面だけを拾い、ワープしなくなる。段差/坂は STEP_UP 範囲で登坂可。線路の縁から外れた場合は gy が下の道路になり else 分岐で落下。
+- 確認: `npx tsc --noEmit` 通過。**ブラウザ目視確認は未実施**（実際にワープが止まるか、坂/縁石の登坂感、線路へ意図的に上がるランプがある場合の挙動は要確認）。
+
+## 2026-07-04
+### NewCity エディタ: 建物レイヤーを 2.46m グリッドにスナップ（道路は 4.92m 据え置き）
+- ユーザー要望: 道路の上に置く建物は、道路グリッドの縦横1/2（=各セルを2×2に分割）の細かいグリッドで配置したい
+- 経緯注意: 同要件は過去2回（案B=占有マスを小マスでカウント / 案A=実寸枠+半グリッド）実装して両方却下・リバート済み。今回は「実装→実機で見て詰める」方針をユーザーが選択（案1）。座標系の不一致が過去の「位置が意味不明」の原因と推測し、スナップ/ゴースト/hover枠/着地/道路上判定を全て同一のレイヤー別タイル式に統一。
+- `NewCityEditor.ts`:
+  - `BUILDING_TILE_DIVISOR=2` / `tileForLayer(layer)`（ground=4.92m, building=2.46m）追加。
+  - `ProtoState` を `sizeCellsBaseW/D`（固定セル）→ `sizeMW/sizeMD`（実寸メートル）保持に変更。`getCellFootprint`/`place`/`updatePreview` に `layer` 引数を渡し、配置レイヤーのタイルで footprint を都度算出。
+  - `hasGroundUnder(i,j,w,d,layer)`: 建物セル→道路セル(`floor(cell/DIVISOR)`)へ変換して道路被覆を判定。
+- `NewCityEditorViewer.tsx`: レイヤー別タイルでスナップ、hover枠は `scaleUnit=tile/TILE_SIZE_M` で縮小、建物レイヤー時のみ½ピッチ細グリッド表示（`useEffect([layer])` で切替）。
+- 確認: `npx tsc --noEmit` 通過。dev server 3003 で `/newcity` 200。
+
+### NewCity エディタ: footprint セル数を切り上げ→四捨五入に（1マスで済むのに4マス問題）
+- ユーザー報告: 地面の上に置く物が、1マスで足りるのに4マス使う
+- 原因: `cellsForSize` が「5%許容超で ceil」。2.46mタイルを少し超える小物（例 chair 2.61m 比1.06）が 2×2 に膨張。
+- 修正: `cellsForSize(sizeM, tileM)` を `Math.max(1, Math.round(sizeM/tileM))`（四捨五入・最小1）に。chair/roof_prop/cube_tree 等が 2×2→1×1 に。道路は実寸整数倍(19.68m=4.0)なので不変。
+- データ根拠: 各 proto の実寸は meta の `canonical_size_meters`（`total_grid` は都市全体の共有グリッドなので proto サイズには使えない点に注意）。
+- 確認: tsc 通過。1×1 が 15→25 個に。
+
+### NewCity: 特定建物が192m離れて分断される bug の根本修正（bit-pack STRIDE）
+- ユーザー報告: `Building_House_01_color02` が崩れる/分割されて配置がうまくいかない
+- 3仮説を検証: ①proto内 `_NNN` 欠け=否（メンバー同サイズの真の複製）②チャンク合成崩れ=否（ローダーは offset を頂点にベイク済み）③別名プロトタイプへの分離（屋上プロップ Props_Roof_* が別proto）=別問題。
+- 真因（算数で確定）: `scripts/newcity-build.mjs` の **bit-pack `STRIDE=4096` が grid(5907×5120×646) に対し小さすぎ**。`key=gx+gy*4096+gz*4096²`。color02 は gx 4096–4607 / gy 4064–4312 に位置し、gx・gy とも 4096 以上が抽出時に `%4096` で 0 側へラップ → 家が cx16/cy16 の正しい位置と cx0/cy0 のラップ先に分断（保存 .vox の 600k@cx0/cy0 + 77k@cy15 と一致）。city の 1024→4096 と同種で、newcity では 4096 でもまだ不足だった。
+- 修正: STRIDE を `maxGridDim` を超える最小の2冪（今回 8192）に自動設定。pack/unpack 両方を `STRIDE`/`STRIDE²` 化。`8192²*646≈4.3e10` で JS 安全整数内。
+- 再ビルド: `node scripts/newcity-build.mjs 0.05`（37.5s, 111 proto, 28.97M voxels）。バックアップ `field/newcity_backup_stride_20260704/` を作成済み。
+- 検証: color02 は cy15,16 の連続チャンク（cx16,17）に修正。**全111 proto で非連続チャンク=0**（gy/gx≥4096 に位置する他の建物も一括修正）。dev server 3003 で manifest/meta/新チャンク 200。
+- **ブラウザ目視確認は未実施**（実際に color02 が1棟として綺麗に配置されるか要確認）。

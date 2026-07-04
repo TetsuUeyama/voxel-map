@@ -8,6 +8,7 @@ import {
 } from '@babylonjs/core';
 import {
   buildNewCityEditor, NewCityEditorController, TILE_SIZE_M,
+  BUILDING_TILE_DIVISOR, tileForLayer,
   type PrototypeInfo, type Layer,
 } from '@/GamePlay/FightGame/Stage/NewCityEditor';
 import { NewCityEditorPanel } from '@/components/NewCityEditorPanel';
@@ -17,6 +18,7 @@ const GRID_CELLS_RADIUS = 60; // 120×120 cells × 4.92m ≈ 590m square
 export function NewCityEditorViewer() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const controllerRef = useRef<NewCityEditorController | null>(null);
+  const fineGridRef = useRef<{ setEnabled: (v: boolean) => void } | null>(null);
   const [prototypes, setPrototypes] = useState<PrototypeInfo[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [layer, setLayer] = useState<Layer>('ground');
@@ -39,6 +41,8 @@ export function NewCityEditorViewer() {
   useEffect(() => { setRotation(0); }, [selectedId]);
   // Switching layer clears the current selection (its parts belong to the other layer).
   useEffect(() => { setSelectedId(null); }, [layer]);
+  // Show the finer building grid only on the building layer.
+  useEffect(() => { fineGridRef.current?.setEnabled(layer === 'building'); }, [layer]);
 
   const handleSelect = (id: string) => { setSelectedId(id); };
 
@@ -103,6 +107,23 @@ export function NewCityEditorViewer() {
     grid.alpha = 0.35;
     grid.isPickable = false;
 
+    // Finer grid (½ pitch) shown only while the building layer is active, so the
+    // 2.46 m building snap is visible. Covers the same span as the coarse grid.
+    const fineLines: Vector3[][] = [];
+    const buildTile = TILE_SIZE_M / BUILDING_TILE_DIVISOR;
+    const fineHalf = half * BUILDING_TILE_DIVISOR;
+    for (let i = -fineHalf; i <= fineHalf; i++) {
+      const v = i * buildTile;
+      fineLines.push([new Vector3(v, 0.008, -span), new Vector3(v, 0.008, span)]);
+      fineLines.push([new Vector3(-span, 0.008, v), new Vector3(span, 0.008, v)]);
+    }
+    const fineGrid = MeshBuilder.CreateLineSystem('fineGrid', { lines: fineLines, updatable: false }, scene);
+    fineGrid.color = new Color3(0.35, 0.55, 0.7);
+    fineGrid.alpha = 0.28;
+    fineGrid.isPickable = false;
+    fineGrid.setEnabled(false);
+    fineGridRef.current = fineGrid;
+
     const hover = MeshBuilder.CreateBox('hover',
       { width: TILE_SIZE_M, height: 0.1, depth: TILE_SIZE_M }, scene);
     const hMat = new StandardMaterial('hoverMat', scene);
@@ -138,21 +159,22 @@ export function NewCityEditorViewer() {
         return;
       }
       const p = pickInfo.pickedPoint;
-      const i = Math.floor(p.x / TILE_SIZE_M);
-      const j = Math.floor(p.z / TILE_SIZE_M);
       const controller = controllerRef.current;
       const curLayer = layerRef.current;
+      const tile = tileForLayer(curLayer);   // ground = 4.92 m, building = 2.46 m
+      const i = Math.floor(p.x / tile);
+      const j = Math.floor(p.z / tile);
       const occupied = controller ? controller.isOccupied(i, j, curLayer) : false;
       // Show the actual-model ghost only over an EMPTY cell with a part selected.
       let w = 1, d = 1;
       let showGhost = false;
       let invalidGround = false;
       if (!occupied && controller && selectedRef.current) {
-        const fp = controller.getCellFootprint(selectedRef.current, rotationRef.current);
+        const fp = controller.getCellFootprint(selectedRef.current, rotationRef.current, curLayer);
         if (fp) { w = fp.w; d = fp.d; }
-        showGhost = controller.updatePreview(selectedRef.current, i, j, rotationRef.current);
+        showGhost = controller.updatePreview(selectedRef.current, i, j, rotationRef.current, curLayer);
         // Buildings can only sit on the ground layer (roads/grass).
-        if (curLayer === 'building') invalidGround = !controller.hasGroundUnder(i, j, w, d);
+        if (curLayer === 'building') invalidGround = !controller.hasGroundUnder(i, j, w, d, curLayer);
       } else {
         controller?.hidePreview();
       }
@@ -168,9 +190,11 @@ export function NewCityEditorViewer() {
       } else {
         hMat.diffuseColor.set(1, 1, 0.3); hMat.emissiveColor.set(0.6, 0.6, 0.1); hMat.alpha = 0.25;
       }
+      // Hover box base mesh is TILE_SIZE_M; scale it down for the finer building tile.
+      const scaleUnit = tile / TILE_SIZE_M;
       hover.setEnabled(true);
-      hover.scaling.set(w, 1, d);
-      hover.position.set((i + w / 2) * TILE_SIZE_M, 0.05, (j + d / 2) * TILE_SIZE_M);
+      hover.scaling.set(w * scaleUnit, 1, d * scaleUnit);
+      hover.position.set((i + w / 2) * tile, 0.05, (j + d / 2) * tile);
 
       // Act only on a TAP (down+up without dragging) so right-drag-to-pan and
       // left-drag-to-orbit don't trigger placement/rotation/erase.
@@ -194,7 +218,7 @@ export function NewCityEditorViewer() {
         } else if (selectedRef.current) {
           const newRot = ((rotationRef.current + 1) % 4) as 0 | 1 | 2 | 3;
           setRotation(newRot);
-          controller.updatePreview(selectedRef.current, i, j, newRot);  // refresh ghost immediately
+          controller.updatePreview(selectedRef.current, i, j, newRot, curLayer);  // refresh ghost immediately
         }
       } else if (evt.button === 0) {
         // Left-click: on a placed part = rotate it; on empty = place selected part.
